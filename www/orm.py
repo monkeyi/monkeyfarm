@@ -69,6 +69,7 @@ def execute(sql, args):
         logging.info('yield from __pool success, begain to excute function, __pool=%s', __pool)
         try:
             cur = yield from conn.cursor()
+            logging.info('cur.execute sql=%s, args = %s' % (sql, args))
             yield from cur.execute(sql.replace('?', '%s'), args)
             affected = cur.rowcount
             logging.info('execute sql=%s, args=%s, affected=%s' % (sql, args,affected))
@@ -180,7 +181,9 @@ class Model(dict, metaclass=ModelMetaclass):
         if value is None:
             field = self.__mappings__[key]
             if field.default is not None:
+                logging.info('begin to get default value, key = %s, field.default = %s, field=%s' % (key, field.default, field))
                 value = field.default() if callable(field.default) else field.default
+                logging.info('end to get default, value = %s', value)
                 logging.debug('using default value for %s: %s' % (key, str(value)))
                 setattr(self, key, value)
         return value
@@ -241,9 +244,9 @@ class Model(dict, metaclass=ModelMetaclass):
     # 对象方法
     @asyncio.coroutine
     def save(self):
-        logging.info('save start, begin to execute...')
         args = list(map(self.getValueOrDefault, self.__fields__))
         args.append(self.getValueOrDefault(self.__primary_key__))
+        logging.info('save start, begin to execute..., args = %s', args)
         rows = yield from execute(self.__insert__, args)
         logging.info('save end, rows = %s', rows)
         
