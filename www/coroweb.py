@@ -9,7 +9,7 @@ from urllib import parse
 
 from aiohttp import web
 
-#from apis import APIError
+from apis import APIError
 
 # 定义一个get装饰器，将一个函数映射成一个url处理函数
 # 相当于o
@@ -151,8 +151,7 @@ class RequestHandler(object):
         try:
             r = yield from self._func(**kw)
             return r
-        #except APIError as e:
-        except Exception as e:
+        except APIError as e:
             logging.exception(e)
             return dict(error=e.error, data=e.data, message=e.message)
 

@@ -7,7 +7,7 @@ from coroweb import get, post
 from models import User, Comment, Blog, next_id
 
 @get('/')
-async def index(request):
+def index(request):
     logging.info('index begin run')
     summary = 'this is summary for the article'
     blogs = [
@@ -19,6 +19,15 @@ async def index(request):
             '__template__': 'blogs.html',
             'blogs': blogs
             }
+
+
+@get('/api/users')
+async def api_get_users():
+    users = await (User.findAll(orderBy='created_at desc'))
+    logging.info('api_get_users end, users = %s', users)
+    for u in users:
+        u.password = '******'
+    return dict(users=users)
 
 #    users = await User.findAll()
 #    logging.info('index run, request: %s, %s, users = %s' % (request.method, request.path, users)) 
