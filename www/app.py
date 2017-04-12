@@ -13,6 +13,8 @@ from jinja2 import Environment, FileSystemLoader
 
 import orm
 from coroweb import add_routes, add_static, add_route
+from handlers import cookie2user, COOKIE_NAME
+
 
 def init_jinja2(app, **kw):
     logging.info('init jinja2..., kw = %s', (kw))
@@ -43,6 +45,20 @@ async def logger_factory(app, handler):
         return (await handler(request))
     return logger
 
+async def auth_factory(app, handler):
+    async def auth(request):
+        logging.info('check user: %s %s' % (request.method, request.path))
+        request.__user__ = None
+        cookie_str = request.cookies.get(COOKIE_NAME)
+        if cookie_str:
+            user = await cookie2user(cookie_str)
+            if user:
+                logging.info('set current user: %s' % user.email)
+                request.__user__ = user
+        if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.admin):
+            return web.HTTPFound('/signin')
+        return await handler(request)
+    return auth
 
 # 请求拦截器，当发起请求时，会被app调用并传入
 # 该函数hh用于拦截post请求将请求体数据正确的保存到request.__data__中
@@ -62,7 +78,7 @@ async def data_factory(app, hanlder):
 # 该函数主要用于将实际处理函数的返回值此时为dict，转换成aiohttp框架需要的web.Response对象返回
 async def response_factory(app, handler):
     async def response(request):
-        logging.info('response_factory run, handler = %s', handler)
+        logging.info('response_factory run, handler = %s, request=%s' % (handler, request))
         r = await handler(request)
         logging.info('response_factory after handler result = %s', r)
         if isinstance(r, web.StreamResponse):
@@ -84,6 +100,7 @@ async def response_factory(app, handler):
                 resp.content_type = 'application/json;charset=utf-8'
                 return resp
             else:
+                r['__user__'] = request.__user__
                 resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
                 resp.content_type = 'text/html;charset=utf-8'
                 return resp
@@ -124,7 +141,7 @@ async def init(loop):
     # 发起一个请求的程序执行步骤：
     # 发起请求-> app回调logger_factory(app, handler=response_factory) 该函数主要添加日志 -> response_factory(app, handler=RequestHandler), RequestHandler为app.add_router上的处理函数,它负责解析request参数给实际的url处理函数使用， 该response_factory函数先调用handler(request)得到处理后的结果，此时为dict对象，然后将dict转成web.Response对象以满足aiohttp框架的要求, 此web.Response为jinja2模板数据.
     app = web.Application(loop=loop, middlewares=[
-        logger_factory, response_factory
+        logger_factory, auth_factory, response_factory
         ])
     # 初始化模板
     init_jinja2(app, filters=dict(datetime=datetime_filter))
@@ -137,6 +154,7 @@ async def init(loop):
     # 创建tcp服务器
     srv = await loop.create_server(app.make_handler(), '127.0.0.1', 9000)
     logging.info('server started at http://127.0.0.1:9000')
+    return srv
 #    app = web.Application(loop=loop)
 #    app.router.add_route('GET', '/', index)
 #    srv = yield from loop.create_server(app.make_handler(), '127.0.0.1', 9000)

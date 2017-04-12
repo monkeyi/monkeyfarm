@@ -10,6 +10,7 @@ from urllib import parse
 from aiohttp import web
 
 from apis import APIError
+import pdb
 
 # 定义一个get装饰器，将一个函数映射成一个url处理函数
 # 相当于o
@@ -45,9 +46,11 @@ def post(path):
 def get_required_kw_args(fn):
     args = []
     params = inspect.signature(fn).parameters
+    logging.info('get_required_kw_args begin, fn=%s, params=%s' % (fn, params))
     for name, param in params.items():
         if param.kind == inspect.Parameter.KEYWORD_ONLY and param.default == inspect.Parameter.empty:
             args.append(name)
+    logging.info('get_required_kw_args end, args=%s' % (args,))
     return tuple(args)
 
 def get_named_kw_args(fn):
@@ -143,6 +146,7 @@ class RequestHandler(object):
             kw['request'] = request
         #check required kw:
         if self._required_kw_args:
+            logging.info('self._required_kw_args = %s, kw = %s' % (self._required_kw_args, str(kw)))
             for name in self._required_kw_args:
                 if not name in kw:
                     return web.HTTPBadRequest('Missing argument: %s' % name)
