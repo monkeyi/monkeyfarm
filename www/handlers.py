@@ -7,6 +7,7 @@ from coroweb import get, post
 
 from models import User, Comment, Blog, next_id
 from config import configs
+from apis import Page
 
 COOKIE_NAME = 'awesome'
 _COOKIE_KEY = configs.session.secret
@@ -16,6 +17,7 @@ def check_admin(request):
         raise APIPermissionError()
 
 def get_page_index(page_str):
+    logging.info('get_page_index, page_str = %s', page_str)
     p = 1
     try:
         p = int(page_str)
@@ -80,6 +82,19 @@ def index(request):
             'blogs': blogs
             }
 
+@get('/blog/{id}')
+def get_blog(id):
+    blog = yield from Blog.find(id)
+    comments = yield from Comment.findAll('blog_id=?', [id], orderBy='created_at desc')
+    for c in comments:
+        c.html_content = text2html(c.content)
+    blog.html_content = markdown2.markdown(blog.content)
+    return {
+            '__template__': 'blog.html',
+            'blog': blog,
+            'comments': comments
+            }
+
 @get('/register')
 def register():
     return {
@@ -129,6 +144,13 @@ def signout(request):
     logging.info('user signed out.')
     return r
 
+@get('/manage/blogs')
+def manage_blogs(*, page='1'):
+    return {
+            '__template__': 'manage_blogs.html',
+            'page_index': get_page_index(page)
+            }
+
 @get('/manage/blogs/create')
 def manage_create_blog():
     logging.info('manage_create_blog begin...')
@@ -168,6 +190,22 @@ def api_register_user(*, email, name, password):
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
     logging.info('api_register_user finished, r = %s', r)
     return r
+
+@get('/api/blogs')
+def api_blogs(*, page='1'):
+    page_index = get_page_index(page)
+    logging.info('api_blogs, page=%s, page_index=%s, begin yield from Blog.findNumber...' % (page, page_index))
+
+    num = yield from Blog.findNumber('count(id)')
+    logging.info('after Blog.findNumber, num = %s', num)
+
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, blogs=())
+    blogs = yield from Blog.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    logging.info('lastly, p = %s, Blog.findAll, blogs.count = %s' % (p, blogs.count))
+
+    return dict(page=p, blogs=blogs)
 
 @get('/api/blogs/{id}')
 def api_get_blog(*, id):
