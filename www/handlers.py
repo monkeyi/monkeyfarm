@@ -11,6 +11,20 @@ from config import configs
 COOKIE_NAME = 'awesome'
 _COOKIE_KEY = configs.session.secret
 
+def check_admin(request):
+    if request.__user__ is None or not request.__user__.admin:
+        raise APIPermissionError()
+
+def get_page_index(page_str):
+    p = 1
+    try:
+        p = int(page_str)
+    except ValueError as e:
+        pass
+    if p < 1:
+        p = 1
+    return p
+
 def user2cookie(user, max_age):
     '''
     Generate cookie str by user.
@@ -20,6 +34,9 @@ def user2cookie(user, max_age):
     s = '%s-%s-%s-%s' % (user.id, user.password, expires, _COOKIE_KEY)
     L = [user.id, expires, hashlib.sha1(s.encode('utf-8')).hexdigest()]
     return '-'.join(L)
+
+def text2html(text):
+    lines = map(lambda s: '<p>%s</p>' % s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;'), filter(lambda s: s.strip() != '', text.split('\n')))
 
 @asyncio.coroutine
 def cookie2user(cookie_str):
@@ -112,6 +129,16 @@ def signout(request):
     logging.info('user signed out.')
     return r
 
+@get('/manage/blogs/create')
+def manage_create_blog():
+    logging.info('manage_create_blog begin...')
+    return {
+            '__template__': 'manage_blog_edit.html',
+            'id': '',
+            'action': '/api/blogs'
+            }
+
+
 _RE_EMAIL = re.compile(r'^[a-z0-9\.\-\_]+\@[a-z0-9\-\_]+(\.[a-z0-9\-\_]+){1,4}$')
 _RE_SHA1 = re.compile(r'^[0-9a-f]{40}$')
 
@@ -142,19 +169,22 @@ def api_register_user(*, email, name, password):
     logging.info('api_register_user finished, r = %s', r)
     return r
 
+@get('/api/blogs/{id}')
+def api_get_blog(*, id):
+    blog = yield from Blog.find(id)
+    return blog
 
-#@get('/api/users')
-#async def api_get_users():
-#    users = await (User.findAll(orderBy='created_at desc'))
-#    logging.info('api_get_users end, users = %s', users)
-#
-#    for u in users:
-#        u.password = '******'
-#    return dict(users=users)
+@post('/api/blogs')
+def api_create_blog(request, *, name, summary, content):
+    logging.info('api_create_blog, name= %s', name)
+    check_admin(request)
+    if not name or not name.strip():
+        raise APIValueError('name', 'name cannot be empty.')
+    if not summary or not summary.strip():
+        raise APIValueError('summary', 'summary cannot be empty.')
+    if not content or not content.strip():
+        raise APIValueError('content', 'content cannot be empty.')
+    blog = Blog(user_id=request.__user__.id, user_name=request.__user__.name, user_image=request.__user__.image, name=name.strip(), summary=summary.strip(), content=content.strip())
+    yield from blog.save()
+    return blog
 
-#    users = await User.findAll()
-#    logging.info('index run, request: %s, %s, users = %s' % (request.method, request.path, users)) 
-#    return {
-#            '__template__': 'test.html',
-#            'users': users
-#            }
